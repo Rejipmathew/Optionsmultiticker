@@ -12,29 +12,42 @@ with st.sidebar:
 
     # Dictionary to store option chain data for each ticker
     option_chains = {}
+
+    # Add a clear cache button
+    if st.button("Clear Cache"):
+        st.cache_data.clear()
+        st.cache_resource.clear()
+
     for ticker_symbol in tickers:
-        try:
-            ticker = yf.Ticker(ticker_symbol)
-            # Get available expiration dates
-            available_expirations = ticker.options
-            option_chains[ticker_symbol] = {
-                'ticker': ticker,
-                'expirations': available_expirations
-            }
-        except Exception as e:
-            st.error(f"Error fetching ticker data for {ticker_symbol}: {e}")
-            st.stop()
+        @st.cache_resource
+        def get_ticker_data(ticker_symbol):
+            try:
+                ticker = yf.Ticker(ticker_symbol)
+                # Get available expiration dates
+                available_expirations = ticker.options
+                return {
+                    'ticker': ticker,
+                    'expirations': available_expirations
+                }
+            except Exception as e:
+                st.error(f"Error fetching ticker data for {ticker_symbol}: {e}")
+                st.stop()
+
+        option_chains[ticker_symbol] = get_ticker_data(ticker_symbol)
 
     # Select expiry date (assuming the same expiry date for all tickers for now)
     expiry_date = st.selectbox("Select expiry date:", option_chains[tickers[0]]['expirations'])
 
-    # Fetch option chain data for all tickers
     for ticker_symbol in tickers:
-        try:
-            option_chains[ticker_symbol]['option_chain'] = option_chains[ticker_symbol]['ticker'].option_chain(expiry_date)
-        except Exception as e:
-            st.error(f"Error fetching option chain data for {ticker_symbol}: {e}")
-            st.stop()
+        @st.cache_resource  # Use st.cache_resource for option chains
+        def get_option_chain(ticker_symbol, expiry_date):
+            try:
+                return option_chains[ticker_symbol]['ticker'].option_chain(expiry_date)
+            except Exception as e:
+                st.error(f"Error fetching option chain data for {ticker_symbol}: {e}")
+                st.stop()
+
+        option_chains[ticker_symbol]['option_chain'] = get_option_chain(ticker_symbol, expiry_date)
 
     # Choose plotting parameter for the first plot
     plot_param = st.selectbox("Select parameter to plot (Chain):", ['lastPrice', 'volume', 'openInterest'])
@@ -92,7 +105,11 @@ elif page == "Option Price":
 
     try:
         # Fetch historical data for the selected option
-        option_data = yf.download(selected_option, period="1mo")  # Download 1 month of data
+        @st.cache_data
+        def get_option_data(selected_option):
+            return yf.download(selected_option, period="1mo")
+
+        option_data = get_option_data(selected_option)
 
         # Create the plot
         fig, ax = plt.subplots()
